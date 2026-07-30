@@ -39,7 +39,14 @@ FOLLOWER_NAMESPACE = "follower"
 LEADER_CONTROLLER_NAME = "leader_controller"
 FOLLOWER_CONTROLLER_NAME = "follower_controller"
 
-LEADER_INPUT_TOPIC = "franka_robot_state_broadcaster/external_joint_torques"
+# Both robots publish their own sensed external joint torque and measured joint
+# state on this same (per-namespace) topic name via franka_robot_state_broadcaster.
+# It is reused for both force channels of the 4-channel bilateral controller:
+#   - leader_namespace/EXTERNAL_JOINT_TORQUES_TOPIC:   force channel leader -> follower
+#     (the operator's own applied force, fed forward into the follower)
+#   - follower_namespace/EXTERNAL_JOINT_TORQUES_TOPIC: force channel follower -> leader
+#     (the follower's sensed contact force, reflected back to the operator)
+EXTERNAL_JOINT_TORQUES_TOPIC = "franka_robot_state_broadcaster/external_joint_torques"
 FOLLOWER_INPUT_TOPIC = "franka_robot_state_broadcaster/measured_joint_states"
 
 LOWER_TORQUE_THRESHOLDS_ACCELERATION = [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0]
@@ -51,6 +58,12 @@ TIMEOUT_KEY = 'input_topic_timeout'
 ALPHA_KEY = 'alpha'
 K_GAINS_KEY = 'k_gains'
 D_GAINS_KEY = 'd_gains'
+# Force channel follower -> leader: scales the follower's sensed contact torque
+# before it is reflected back to the leader. Tunes "feel", independent of k_gains/d_gains.
+FORCE_REFLECTION_GAINS_KEY = 'force_reflection_gains'
+# Force channel leader -> follower: scales the leader's own sensed external torque
+# (the operator's applied force) before it is fed forward into the follower.
+FORCE_FEEDFORWARD_GAINS_KEY = 'force_feedforward_gains'
 MAX_TORQUE_ACCELERATION_KEY = 'upper_torque_thresholds_acceleration'
 MAX_TORQUE_NOMINAL_KEY = 'upper_torque_thresholds_nominal'
 MAX_FORCE_ACCELERATION_KEY = 'upper_force_thresholds_acceleration'
@@ -69,6 +82,8 @@ default_parameters = {
     ALPHA_KEY: [3, 3, 3, 3, 1, 1, 1],
     K_GAINS_KEY: [600.0, 600.0, 600.0, 600.0, 250.0, 150.0, 50.0],
     D_GAINS_KEY: [30.0, 30.0, 30.0, 30.0, 10.0, 10.0, 5.0],
+    FORCE_REFLECTION_GAINS_KEY: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    FORCE_FEEDFORWARD_GAINS_KEY: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
     MAX_TORQUE_ACCELERATION_KEY: [85.0, 85.0, 85.0, 85.0, 11.0, 11.0, 11.0],
     MAX_TORQUE_NOMINAL_KEY: [85.0, 85.0, 85.0, 85.0, 11.0, 11.0, 11.0],
     MAX_FORCE_ACCELERATION_KEY: [85.0, 85.0, 85.0, 85.0, 11.0, 11.0],
@@ -119,6 +134,7 @@ def get_action_remapping(action: str, target_action: str) -> list:
 
 def create_controller_config(
     input_topic_name: str,
+    force_input_topic_name: str,
     config
 ) -> str:
     """Create a YAML configuration file for the teleoperation controllers."""
@@ -129,6 +145,9 @@ def create_controller_config(
     alpha: List[float] = cvt_to_float_list(config[ALPHA_KEY])
     k_gains: List[float] = cvt_to_float_list(config[K_GAINS_KEY])
     d_gains: List[float] = cvt_to_float_list(config[D_GAINS_KEY])
+    # Force coupling gains (feel), independent of the position coupling gains above (tracking).
+    force_reflection_gains: List[float] = cvt_to_float_list(config[FORCE_REFLECTION_GAINS_KEY])
+    force_feedforward_gains: List[float] = cvt_to_float_list(config[FORCE_FEEDFORWARD_GAINS_KEY])
 
     config_data = {
         "/**": {
@@ -139,6 +158,8 @@ def create_controller_config(
                     "input_topic_timeout": input_topic_timeout,
                     "use_input_topic": True,
                     "alpha": alpha,
+                    # Force channel follower -> leader (feel).
+                    "force_reflection_gains": force_reflection_gains,
                 }
             },
             "follower_controller": {
@@ -148,6 +169,10 @@ def create_controller_config(
                     "input_topic_timeout": input_topic_timeout,
                     "k_gains": k_gains,
                     "d_gains": d_gains,
+                    # Force channel leader -> follower (feel), separate from k_gains/d_gains
+                    # (tracking) above.
+                    "force_input_topic": force_input_topic_name,
+                    "force_feedforward_gains": force_feedforward_gains,
                 }
             },
         },
@@ -163,6 +188,7 @@ def add_robot_launch_config(
         robot_config: Dict[str, Any],
         namespace: str,
         input_topic_name: str,
+        force_input_topic_name: str,
         controller_name: str,
 ) -> List[LaunchDescriptionEntity]:
     """Create the shared launch configuration for a single robot."""
@@ -170,6 +196,7 @@ def add_robot_launch_config(
 
     config_file = create_controller_config(
         input_topic_name,
+        force_input_topic_name,
         robot_config
     )
 
@@ -283,7 +310,8 @@ def add_pair(pair_config) -> List[LaunchDescriptionEntity]:
         add_robot_launch_config(
             resolved_leader_config,
             leader_namespace,
-            f"/{follower_namespace}/{LEADER_INPUT_TOPIC}",
+            f"/{follower_namespace}/{EXTERNAL_JOINT_TORQUES_TOPIC}",
+            "",  # the leader controller has no force_input_topic parameter
             LEADER_CONTROLLER_NAME,
         )
     )
@@ -296,6 +324,7 @@ def add_pair(pair_config) -> List[LaunchDescriptionEntity]:
             resolved_follower_config,
             follower_namespace,
             f"/{leader_namespace}/{FOLLOWER_INPUT_TOPIC}",
+            f"/{leader_namespace}/{EXTERNAL_JOINT_TORQUES_TOPIC}",
             FOLLOWER_CONTROLLER_NAME
         )
     )

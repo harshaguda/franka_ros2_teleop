@@ -51,12 +51,18 @@ private:
   std::string arm_id_;
   std::string robot_description_;
   std::string input_topic_;
+  std::string force_input_topic_;
   Vector7d q_;
   Vector7d initial_q_;
   Vector7d dq_;
   Vector7d dq_filtered_;
   Vector7d k_gains_;
   Vector7d d_gains_;
+  // Force channel gain: scales the leader's own sensed external torque (i.e. the
+  // force the human operator applies at the leader) before it is fed forward into
+  // the follower's torque command. Independent from k_gains_/d_gains_ (the position
+  // coupling), so tracking and "feel" can each be tuned on their own gain.
+  Vector7d force_feedforward_gains_;
   double elapsed_time_{0.0};
   int64_t input_topic_timeout_ = 2500000;
 
@@ -64,6 +70,11 @@ private:
   measured_joint_states_from_leader_buffer_ptr_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr
     measured_joint_states_from_leader_subscriber_;
+
+  realtime_tools::RealtimeBuffer<std::shared_ptr<sensor_msgs::msg::JointState>>
+  external_joint_torques_from_leader_buffer_ptr_;
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr
+    external_joint_torques_from_leader_subscriber_;
 
   void updateJointStates();
 };

@@ -62,6 +62,11 @@ private:
   bool use_input_topic_ = true;
   std::vector<double> feedback_avoidance_alpha_{18.75, 15, 13.5, 9, 5.25, 3, 1.5};
 
+  // Force channel gain: scales the follower's sensed contact torque before it is
+  // reflected back to the leader. Independent from the follower's position-tracking
+  // gains (k_gains/d_gains), so "feel" can be tuned without affecting tracking.
+  std::vector<double> force_reflection_gains_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+
   std::vector<double> leader_velocity_{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
   void updateJointStates();

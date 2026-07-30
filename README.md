@@ -4,6 +4,31 @@
 Due to the robot's force-torque sensors we can send contact forces measured by the follower to the leader robot.
 The leader robot will then replay the forces so the teleoperator can feel the contacts as well.
 
+## Bilateral control architecture (4-channel)
+
+The teleoperation controllers implement a **4-channel bilateral control** scheme: position and
+force are each transmitted explicitly, in both directions, and each direction has its own
+independently tunable gain. This decouples *tracking* from *feel*, so one gain no longer has to
+compromise between the two:
+
+| # | Channel | Direction | Signal | Gain(s) | Tunes |
+|---|---|---|---|---|---|
+| 1 | Position coupling | leader → follower | leader's measured joint position/velocity | `k_gains` / `d_gains` (follower) | Tracking accuracy: how tightly the follower's motion follows the leader |
+| 2 | Force reflection | follower → leader | follower's sensed external (contact) torque | `force_reflection_gains` (leader) | Feel: how strongly the operator perceives the follower's contact forces |
+| 3 | Force feedforward | leader → follower | leader's own sensed external (operator-applied) torque | `force_feedforward_gains` (follower) | Feel: how directly the operator's applied force acts on the follower, without needing to raise the position gains |
+
+Channel 1 alone would make `k_gains`/`d_gains` the single knob governing both how well the
+follower tracks the leader *and*, indirectly, how "stiff" or "soft" the follower feels when it
+contacts the environment. Adding channels 2 and 3 as explicit, separately-gained torque terms means
+`k_gains`/`d_gains` can be tuned purely for tracking, while `force_reflection_gains` and
+`force_feedforward_gains` can be tuned purely for feel.
+
+Both force channels reuse the same `franka_robot_state_broadcaster/external_joint_torques` topic
+that each robot (leader and follower) already publishes: the leader controller subscribes to the
+follower's external torques (channel 2), and the follower controller subscribes to the leader's own
+external torques (channel 3). Setting a `force_*_gains` parameter to all zeros disables that
+channel.
+
 To run the teleoperation, you need to have at least two **Franka FR3** robots with the **FCI (Franka Control Interface)** feature.
 One will be the leader and the other will be the follower.
 The leader can be handguided and the follower will match the leaders position.
@@ -104,6 +129,13 @@ upper_force_thresholds_nominal: [85.0, 85.0, 85.0, 85.0, 11.0, 11.0]
 # Be careful when changing control-related parameters
 k_gains: [600.0, 600.0, 600.0, 600.0, 250.0, 150.0, 50.0] # Stiffness parameters of the follower's joint impedance controller.
 d_gains: [30.0, 30.0, 30.0, 30.0, 10.0, 10.0, 5.0] # Damping parameters of the follower's joint impedance controller.
+
+# Force channels of the 4-channel bilateral control scheme (see "Bilateral control architecture"
+# above). Independent from k_gains/d_gains, so tracking and feel can each be tuned on their own.
+force_reflection_gains: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] # Leader-side gain on the follower's contact torque reflected back to the operator (feel).
+force_feedforward_gains: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] # Follower-side gain on the leader's (operator's) own torque, fed forward into the follower (feel).
+
+alpha: [3, 3, 3, 3, 1, 1, 1] # Feedback-avoidance damping on the leader, per joint. Prevents the leader from "jumping away" right after the follower makes contact.
 
 pairs:
     - namespace: pair_one # each pair must have the 'namespace' parameter set
