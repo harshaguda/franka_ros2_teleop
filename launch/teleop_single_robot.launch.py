@@ -29,18 +29,24 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_robot_nodes(context):
+    # franka_description no longer embeds the <ros2_control> tag (moved to
+    # franka_hardware as of franka_description 2.8.0). Use franka_bringup's
+    # composition xacro, which pulls in the base description and attaches the
+    # franka_hardware ros2_control macro, the same way franka_bringup's own
+    # launch files do.
+    urdf_file = LaunchConfiguration("urdf_file").perform(context)
+    robot_type = urdf_file.split("/")[0]
     urdf_path = PathJoinSubstitution(
         [
-            FindPackageShare("franka_description"),
-            "robots",
-            LaunchConfiguration("urdf_file"),
+            FindPackageShare("franka_bringup"),
+            "urdf",
+            "franka_arm.urdf.xacro",
         ]
     ).perform(context)
     robot_description = xacro.process_file(
         urdf_path,
         mappings={
-            "ros2_control": "true",
-            "arm_id": LaunchConfiguration("arm_id").perform(context),
+            "robot_type": robot_type,
             "arm_prefix": LaunchConfiguration("arm_prefix").perform(context),
             "robot_ip": LaunchConfiguration("robot_ip").perform(context),
             "hand": LaunchConfiguration("load_gripper").perform(context),

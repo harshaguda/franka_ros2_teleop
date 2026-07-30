@@ -54,9 +54,23 @@ const
 }
 
 controller_interface::return_type TeleopLeaderController::update(
-  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+  const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
+  if (loop_period_publisher_ && loop_period_publisher_->trylock()) {
+    loop_period_publisher_->msg_.data = period.seconds() * 1.0e6;
+    loop_period_publisher_->unlockAndPublish();
+  }
+
   auto input = external_joint_torques_from_follower_buffer_ptr_.readFromRT();
+
+  if (force_reflection_channel_latency_publisher_ &&
+    teleop_utils::check_if_rt_buffer_data_is_valid(input) &&
+    force_reflection_channel_latency_publisher_->trylock())
+  {
+    force_reflection_channel_latency_publisher_->msg_.data =
+      teleop_utils::message_age_microseconds(get_node(), input);
+    force_reflection_channel_latency_publisher_->unlockAndPublish();
+  }
 
   std::vector<double> tau_in{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
   updateJointStates();
@@ -148,6 +162,13 @@ CallbackReturn TeleopLeaderController::on_configure(
   }
   force_gain_stream << force_reflection_gains_[teleop_utils::NUM_JOINTS - 1] << "]";
   RCLCPP_INFO(this->get_node()->get_logger(), force_gain_stream.str().c_str());
+
+  loop_period_publisher_ = std::make_shared<Float64RtPublisher>(
+    this->get_node()->create_publisher<std_msgs::msg::Float64>(
+      "~/diagnostics/loop_period_us", rclcpp::SystemDefaultsQoS()));
+  force_reflection_channel_latency_publisher_ = std::make_shared<Float64RtPublisher>(
+    this->get_node()->create_publisher<std_msgs::msg::Float64>(
+      "~/diagnostics/force_reflection_channel_latency_us", rclcpp::SystemDefaultsQoS()));
 
   if (use_input_topic_) {
     external_joint_torques_from_follower_subscriber_ =

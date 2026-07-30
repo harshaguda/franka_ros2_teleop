@@ -49,14 +49,25 @@ TeleopFollowerController::state_interface_configuration() const
 }
 
 controller_interface::return_type TeleopFollowerController::update(
-  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+  const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
+  if (loop_period_publisher_ && loop_period_publisher_->trylock()) {
+    loop_period_publisher_->msg_.data = period.seconds() * 1.0e6;
+    loop_period_publisher_->unlockAndPublish();
+  }
+
   updateJointStates();
   Vector7d q_goal = initial_q_;
 
   const auto input = measured_joint_states_from_leader_buffer_ptr_.readFromRT();
 
   if (teleop_utils::check_if_rt_buffer_data_is_valid(input)) {
+    if (position_channel_latency_publisher_ && position_channel_latency_publisher_->trylock()) {
+      position_channel_latency_publisher_->msg_.data =
+        teleop_utils::message_age_microseconds(get_node(), input);
+      position_channel_latency_publisher_->unlockAndPublish();
+    }
+
     if (teleop_utils::check_if_message_too_old(get_node(), input, input_topic_timeout_)) {
       teleop_utils::set_command_interfaces_to_gravity_compensation(command_interfaces_);
 
@@ -78,6 +89,15 @@ controller_interface::return_type TeleopFollowerController::update(
   // position channel above remains the safety-critical one.
   Vector7d tau_ff = Vector7d::Zero();
   const auto force_input = external_joint_torques_from_leader_buffer_ptr_.readFromRT();
+  if (force_feedforward_channel_latency_publisher_ &&
+    teleop_utils::check_if_rt_buffer_data_is_valid(force_input) &&
+    force_feedforward_channel_latency_publisher_->trylock())
+  {
+    force_feedforward_channel_latency_publisher_->msg_.data =
+      teleop_utils::message_age_microseconds(get_node(), force_input);
+    force_feedforward_channel_latency_publisher_->unlockAndPublish();
+  }
+
   if (teleop_utils::check_if_rt_buffer_data_is_valid(force_input) &&
     !teleop_utils::check_if_message_too_old(get_node(), force_input, input_topic_timeout_))
   {
@@ -183,6 +203,16 @@ CallbackReturn TeleopFollowerController::on_configure(
   input_topic_timeout_ = get_node()->get_parameter("input_topic_timeout").as_int();
   RCLCPP_INFO(
     this->get_node()->get_logger(), "Using input_topic_timeout: %ld", input_topic_timeout_);
+
+  loop_period_publisher_ = std::make_shared<Float64RtPublisher>(
+    this->get_node()->create_publisher<std_msgs::msg::Float64>(
+      "~/diagnostics/loop_period_us", rclcpp::SystemDefaultsQoS()));
+  position_channel_latency_publisher_ = std::make_shared<Float64RtPublisher>(
+    this->get_node()->create_publisher<std_msgs::msg::Float64>(
+      "~/diagnostics/position_channel_latency_us", rclcpp::SystemDefaultsQoS()));
+  force_feedforward_channel_latency_publisher_ = std::make_shared<Float64RtPublisher>(
+    this->get_node()->create_publisher<std_msgs::msg::Float64>(
+      "~/diagnostics/force_feedforward_channel_latency_us", rclcpp::SystemDefaultsQoS()));
 
   measured_joint_states_from_leader_subscriber_ =
     this->get_node()->create_subscription<sensor_msgs::msg::JointState>(

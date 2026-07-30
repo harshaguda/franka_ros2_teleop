@@ -14,6 +14,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   controller_interface
   franka_msgs
   sensor_msgs
+  std_msgs
   controller_manager_msgs
   Eigen3
   pluginlib
@@ -63,6 +64,11 @@ ament_target_dependencies(teleop_gripper_node ${THIS_PACKAGE_INCLUDE_DEPENDS})
 install(TARGETS
   teleop_coordinator
   teleop_gripper_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  scripts/verify_bilateral_timing.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

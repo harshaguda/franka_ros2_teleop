@@ -3,6 +3,12 @@
  
 ## [Unreleased]
 
+- [Feature] Added timing diagnostics to both bilateral controllers (`~/diagnostics/loop_period_us`
+  on both, plus per-channel `~/diagnostics/*_channel_latency_us`) and a
+  `verify_bilateral_timing.py` script to check the 4-channel bilateral loop actually runs at
+  1 kHz and to plot a channel-latency histogram. See README "Verifying 1 kHz timing and channel
+  latency".
+
 - [Feature] Upgraded the bilateral controller to a 4-channel architecture: the leader's own
   sensed external torque is now transmitted to the follower as an explicit force-feedforward
   term (`force_feedforward_gains`), and the existing force reflection from follower to leader now

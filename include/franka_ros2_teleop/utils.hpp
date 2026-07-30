@@ -80,6 +80,19 @@ bool check_if_message_too_old(
   return time_delta > threshold_in_nanoseconds;
 }
 
+// Age of a stamped, RT-buffered message in microseconds, i.e. `now - header.stamp`.
+// Used for the bilateral channel latency diagnostics (see README "Verifying 1 kHz timing
+// and channel latency"). Only meaningful if the publishing and consuming nodes' clocks are
+// synchronized -- on a two-robot setup that generally means both hosts are NTP/PTP-synced.
+template<typename T>
+double message_age_microseconds(
+  const std::shared_ptr<rclcpp_lifecycle::LifecycleNode> node, const std::shared_ptr<T> * data)
+{
+  const rclcpp::Time time_now = node->get_clock()->now();
+  const int64_t time_delta_ns = (time_now - (*data)->header.stamp).nanoseconds();
+  return static_cast<double>(time_delta_ns) / 1.0e3;
+}
+
 inline void set_command_interfaces(
   std::vector<hardware_interface::LoanedCommandInterface> & command_interfaces,
   const std::vector<double> values)

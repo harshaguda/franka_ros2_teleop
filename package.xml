@@ -14,11 +14,18 @@
 
   <depend>controller_interface</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
   <depend>franka_msgs</depend>
   <depend>franka_semantic_components</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
+  <depend>realtime_tools</depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>python3-matplotlib</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>franka_bringup</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

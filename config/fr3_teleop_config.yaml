@@ -4,8 +4,9 @@
 pairs:
   - namespace: franka_teleop
     leader:
-      robot_ip: add_your_leader_robot_address_here
+      robot_ip: 192.168.100.2
     follower:
-      robot_ip: add_your_follower_robot_address_here
+      robot_ip: 192.168.101.2
 
+load_gripper: true 
 

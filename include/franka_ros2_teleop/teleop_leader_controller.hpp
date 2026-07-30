@@ -23,7 +23,9 @@
 #include <rclcpp/duration.hpp>
 #include <rclcpp/time.hpp>
 #include <realtime_tools/realtime_buffer.hpp>
+#include <realtime_tools/realtime_publisher.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
+#include <std_msgs/msg/float64.hpp>
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
@@ -68,6 +70,20 @@ private:
   std::vector<double> force_reflection_gains_{1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
 
   std::vector<double> leader_velocity_{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+  // Timing diagnostics (see README "Verifying 1 kHz timing and channel latency"):
+  // - loop_period_publisher_ publishes the actual, controller_manager-measured `update()`
+  //   period, in microseconds, so a 1 kHz claim can be checked against real jitter rather
+  //   than the configured update_rate alone.
+  // - force_reflection_channel_latency_publisher_ publishes, in microseconds, the age of the
+  //   follower->leader force-reflection message (channel 2) at the moment it is consumed,
+  //   i.e. `now - header.stamp`. This is only meaningful if the leader and follower clocks are
+  //   synchronized (see the proposal's Week 1 time-sync check); it is not a substitute for it.
+  // Publishing uses realtime_tools::RealtimePublisher, which is RT-safe: it never blocks the
+  // update() thread and silently drops a sample if the non-RT publish thread is still busy.
+  using Float64RtPublisher = realtime_tools::RealtimePublisher<std_msgs::msg::Float64>;
+  std::shared_ptr<Float64RtPublisher> loop_period_publisher_;
+  std::shared_ptr<Float64RtPublisher> force_reflection_channel_latency_publisher_;
 
   void updateJointStates();
 };

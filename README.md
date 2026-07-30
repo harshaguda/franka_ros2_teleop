@@ -37,6 +37,40 @@ The forces encountered by the follower can be felt by the person hand-guiding th
 > [!CAUTION] 
 > Avoid hand-guiding the follower, as it might lead to abrupt movements of the leader!
 
+### Verifying 1 kHz timing and channel latency
+
+`controller_manager.update_rate` is configured to 1000 Hz ([config/teleop_controllers.yaml](config/teleop_controllers.yaml)),
+but the configured rate is only a request: real-time scheduling issues, a non-PREEMPT_RT kernel,
+or network jitter between the leader and follower hosts can silently degrade it. Both controllers
+publish lightweight timing diagnostics (via `realtime_tools::RealtimePublisher`, so they never
+block the control loop) that let you check the *actual* rate and per-channel latency rather than
+assuming the configured one:
+
+| Topic (relative to the controller node) | Meaning |
+|---|---|
+| `~/diagnostics/loop_period_us` | The `update()` period actually measured by `controller_manager`, in microseconds. Published by both `leader_controller` and `follower_controller`. |
+| `~/diagnostics/position_channel_latency_us` | Age of the leader's position message (channel 1) when consumed by the follower. Published by `follower_controller`. |
+| `~/diagnostics/force_reflection_channel_latency_us` | Age of the follower's contact-torque message (channel 2) when consumed by the leader. Published by `leader_controller`. |
+| `~/diagnostics/force_feedforward_channel_latency_us` | Age of the leader's own torque message (channel 3) when consumed by the follower. Published by `follower_controller`. |
+
+The channel-latency numbers are `now - header.stamp`, computed on the *consuming* robot, so they
+are only meaningful if the leader and follower hosts' clocks are synchronized (e.g. via `chrony` or
+PTP) -- verify and report that separately before trusting them.
+
+`scripts/verify_bilateral_timing.py` subscribes to these topics for a fixed duration, checks the
+achieved loop rate and channel latencies against configurable thresholds, and writes a latency
+histogram, a CSV of raw samples, and a JSON report:
+
+```bash
+ros2 run franka_ros2_teleop verify_bilateral_timing.py \
+  --leader-namespace leader --follower-namespace follower \
+  --duration 30 --output-dir bilateral_timing_report
+```
+
+It exits non-zero if the achieved rate falls outside `--rate-tolerance-pct` of `--target-rate-hz`
+(default: 1000 Hz +/- 2%) or if p99 channel latency exceeds `--latency-warn-ms` (default: 2 ms).
+Run `ros2 run franka_ros2_teleop verify_bilateral_timing.py --help` for all options.
+
 ## Getting started
 
 To run any quickstart example, you must add the correct IP addresses of you robot to the configuration as described in the following subsections. All other parameters have sensible defaults. If you need to change them, they are datailed in the section [Configuration parameters](#configuration-parameters).
