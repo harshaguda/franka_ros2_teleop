@@ -40,6 +40,17 @@
   leader_controller:
     ros__parameters:
       arm_id: "fr3"
+      # Force channel follower -> leader (feel): scales the follower's sensed contact
+      # torque before it is reflected back to the leader. Independent of the
+      # follower's k_gains/d_gains (position channel, tuned for tracking).
+      force_reflection_gains:
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
 
 /**:
   follower_controller:
@@ -61,6 +72,18 @@
         - 10.0
         - 10.0
         - 5.
+      # Force channel leader -> follower (feel): scales the leader's own sensed
+      # external torque (the operator's applied force) before it is fed forward
+      # into the follower. Independent of k_gains/d_gains above (position channel,
+      # tuned for tracking).
+      force_feedforward_gains:
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
+        - 1.0
 
 /**:
   franka_robot_state_broadcaster:

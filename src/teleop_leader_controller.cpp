@@ -77,12 +77,19 @@ controller_interface::return_type TeleopLeaderController::update(
     tau_in = (*input)->effort;
   }
 
-  // takes and inverts the external joints from the follower
-  // has an extra that avoids a feedback loop that results in the leader
-  // "jumping away" after contact of the follower
+  // Force channel (follower -> leader): the follower's sensed contact torque is
+  // scaled by force_reflection_gains_ and reflected back to the leader so the
+  // operator feels contact. This gain is independent of the follower's
+  // position-tracking gains (k_gains/d_gains), so "feel" can be tuned without
+  // compromising tracking accuracy.
+  // The feedback-avoidance term guards against a feedback loop that would
+  // otherwise result in the leader "jumping away" after contact of the follower;
+  // it is computed on the actually-reflected (gain-scaled) torque so it stays
+  // consistent with what is really being commanded.
   std::vector<double> leader_torque_commands(teleop_utils::NUM_JOINTS);
   for (unsigned int i = 0; i < teleop_utils::NUM_JOINTS; ++i) {
-    const double power_in = leader_velocity_[i] * tau_in[i];
+    const double reflected_tau = force_reflection_gains_[i] * tau_in[i];
+    const double power_in = leader_velocity_[i] * reflected_tau;
 
     double feedback_avoidance_term = 0.0;
 
@@ -91,7 +98,7 @@ controller_interface::return_type TeleopLeaderController::update(
         -feedback_avoidance_alpha_[i] * sgn(leader_velocity_[i]) * fabs(power_in);
     }
 
-    leader_torque_commands[i] = -tau_in[i] + feedback_avoidance_term;
+    leader_torque_commands[i] = -reflected_tau + feedback_avoidance_term;
   }
 
   teleop_utils::set_command_interfaces(command_interfaces_, leader_torque_commands);
@@ -126,6 +133,22 @@ CallbackReturn TeleopLeaderController::on_configure(
   stream << feedback_avoidance_alpha_[teleop_utils::NUM_JOINTS - 1] << "]";
   RCLCPP_INFO(this->get_node()->get_logger(), stream.str().c_str());
 
+  force_reflection_gains_ = get_node()->get_parameter("force_reflection_gains").as_double_array();
+  if (force_reflection_gains_.size() != teleop_utils::NUM_JOINTS) {
+    RCLCPP_FATAL(
+      get_node()->get_logger(),
+      "force_reflection_gains should be of size %d but is of size %ld",
+      teleop_utils::NUM_JOINTS, force_reflection_gains_.size());
+    return CallbackReturn::FAILURE;
+  }
+  std::stringstream force_gain_stream;
+  force_gain_stream << "Using force_reflection_gains: [";
+  for (unsigned int i = 0; i < teleop_utils::NUM_JOINTS - 1; ++i) {
+    force_gain_stream << force_reflection_gains_[i] << ", ";
+  }
+  force_gain_stream << force_reflection_gains_[teleop_utils::NUM_JOINTS - 1] << "]";
+  RCLCPP_INFO(this->get_node()->get_logger(), force_gain_stream.str().c_str());
+
   if (use_input_topic_) {
     external_joint_torques_from_follower_subscriber_ =
       this->get_node()->create_subscription<sensor_msgs::msg::JointState>(
@@ -150,6 +173,8 @@ CallbackReturn TeleopLeaderController::on_init()
 {
   try {
     auto_declare<std::string>("arm_id", "fr3");
+    auto_declare<std::vector<double>>(
+      "force_reflection_gains", {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0});
   } catch (const std::exception & e) {
     RCLCPP_ERROR(
       this->get_node()->get_logger(), "Exception thrown during init stage with message: %s \n",
