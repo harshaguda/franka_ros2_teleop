@@ -1,0 +1,12 @@
+# Example configuration file to setup basic teleoperation for a Franka robot.
+# Replace the IP addresses with the actual robot addresses
+
+pairs:
+  - namespace: franka_teleop
+    leader:
+      robot_ip: 192.168.100.2
+    follower:
+      robot_ip: 192.168.101.2
+
+load_gripper: false 
+
