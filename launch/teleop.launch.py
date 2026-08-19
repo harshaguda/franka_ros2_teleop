@@ -74,7 +74,7 @@ FAKE_HARDWARE_KEY = 'fake_hardware'
 # Where calibrate_payload.py writes <namespace>_payload.yaml (see franka_ros2_teleop README,
 # "Payload calibration"). Same env var / default the calibration script itself uses.
 PAYLOAD_OUTPUT_DIR_ENV = 'TELEOP_PAYLOAD_OUTPUT_DIR'
-PAYLOAD_OUTPUT_DIR_DEFAULT = '/tmp/franka_teleop_payload'
+PAYLOAD_OUTPUT_DIR_DEFAULT = '/home/userlab/hguda/franka_ros2_ws/franka_data/franka_teleop_payload/'
 URDF_KEY = 'urdf_file'
 NAMESPACE_KEY = 'namespace'
 BASE_NAMESPACE_KEY = 'base_namespace'
@@ -269,6 +269,7 @@ def add_robot_launch_config(
         force_input_topic_name: str,
         controller_name: str,
         apply_payload_calibration: bool = False,
+        load_payload_from_yaml: bool = True,
 ) -> List[LaunchDescriptionEntity]:
     """Create the shared launch configuration for a single robot."""
     launch_config = []
@@ -310,9 +311,11 @@ def add_robot_launch_config(
     ))
 
     if apply_payload_calibration:
-        launch_config.append(
-            create_set_load_process(namespace, load_payload_calibration(namespace))
+        set_load_values = (
+            load_payload_calibration(namespace) if load_payload_from_yaml
+            else default_set_load_values()
         )
+        launch_config.append(create_set_load_process(namespace, set_load_values))
 
     launch_config.append(
         IncludeLaunchDescription(
@@ -359,7 +362,7 @@ def add_robot_launch_config(
     return launch_config
 
 
-def add_pair(pair_config) -> List[LaunchDescriptionEntity]:
+def add_pair(pair_config, load_payload_from_yaml: bool = True) -> List[LaunchDescriptionEntity]:
     """Create the launch configuration for a pair of robots (leader and follower)."""
     try:
         pair_namespace: str = pair_config['namespace']
@@ -411,6 +414,7 @@ def add_pair(pair_config) -> List[LaunchDescriptionEntity]:
             f"/{leader_namespace}/{EXTERNAL_JOINT_TORQUES_TOPIC}",
             FOLLOWER_CONTROLLER_NAME,
             apply_payload_calibration=True,
+            load_payload_from_yaml=load_payload_from_yaml,
         )
     )
 
@@ -456,6 +460,9 @@ def generate_launch_configuration_for_all_robots(context) -> List[LaunchDescript
     config_file = LaunchConfiguration('robot_config_file').perform(context)
     base_config = load_yaml(config_file)
 
+    load_payload_from_yaml = LaunchConfiguration('load_payload_calibration').perform(
+        context).lower() in ('true', '1', 'yes')
+
     pairs = base_config.pop('pairs', None)
 
     assert pairs, "You need to add teleoperation pairs (leader and follower) to your config file!"
@@ -468,7 +475,7 @@ def generate_launch_configuration_for_all_robots(context) -> List[LaunchDescript
 
         resolved_pair_config = resolved_base_config | pair_config
 
-        launch_config.extend(add_pair(resolved_pair_config))
+        launch_config.extend(add_pair(resolved_pair_config, load_payload_from_yaml))
 
     return launch_config
 
@@ -481,6 +488,15 @@ def generate_launch_description():
                 FindPackageShare('franka_ros2_teleop'), 'config', 'fr3_teleop_config.yaml'
             ]),
             description='Path to the robot configuration file to load',
+        ),
+        DeclareLaunchArgument(
+            'load_payload_calibration',
+            default_value='true',
+            description=(
+                "If true, apply the follower's <namespace>_payload.yaml via set_load at "
+                "startup. If false, explicitly zero the load instead (rather than leaving "
+                "whatever was previously configured on the robot)."
+            ),
         ),
         OpaqueFunction(function=generate_launch_configuration_for_all_robots),
     ])
