@@ -29,11 +29,24 @@ Run this first, then in a second terminal run the probe script:
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+
+LOWER_TORQUE_THRESHOLDS_ACCELERATION = [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0]
+UPPER_TORQUE_THRESHOLDS_ACCELERATION = [85.0, 85.0, 85.0, 85.0, 11.0, 11.0, 11.0]
+LOWER_TORQUE_THRESHOLDS_NOMINAL = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+UPPER_TORQUE_THRESHOLDS_NOMINAL = [85.0, 85.0, 85.0, 85.0, 11.0, 11.0, 11.0]
+LOWER_FORCE_THRESHOLDS_ACCELERATION = [20.0, 20.0, 20.0, 20.0, 20.0, 20.0]
+UPPER_FORCE_THRESHOLDS_ACCELERATION = [85.0, 85.0, 85.0, 11.0, 11.0, 11.0]
+LOWER_FORCE_THRESHOLDS_NOMINAL = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+UPPER_FORCE_THRESHOLDS_NOMINAL = [85.0, 85.0, 85.0, 11.0, 11.0, 11.0]
+
+
+def cvt_to_string(values):
+    return ", ".join(str(float(v)) for v in values)
 
 
 def generate_launch_description():
@@ -58,6 +71,36 @@ def generate_launch_description():
             "fake_sensor_commands": LaunchConfiguration("use_fake_hardware"),
             "controllers_yaml": controllers_yaml,
         }.items(),
+    )
+
+    set_collision_behavior = ExecuteProcess(
+        cmd=[[
+            FindExecutable(name="ros2"),
+            " service call ",
+            "/", namespace, "/service_server/set_full_collision_behavior ",
+            "franka_msgs/srv/SetFullCollisionBehavior ",
+            "\"{ ",
+            "lower_torque_thresholds_acceleration: ",
+            f"[{cvt_to_string(LOWER_TORQUE_THRESHOLDS_ACCELERATION)}], ",
+            "upper_torque_thresholds_acceleration: ",
+            f"[{cvt_to_string(UPPER_TORQUE_THRESHOLDS_ACCELERATION)}], ",
+            "lower_torque_thresholds_nominal: ",
+            f"[{cvt_to_string(LOWER_TORQUE_THRESHOLDS_NOMINAL)}], ",
+            "upper_torque_thresholds_nominal: ",
+            f"[{cvt_to_string(UPPER_TORQUE_THRESHOLDS_NOMINAL)}], ",
+            "lower_force_thresholds_acceleration: ",
+            f"[{cvt_to_string(LOWER_FORCE_THRESHOLDS_ACCELERATION)}], ",
+            "upper_force_thresholds_acceleration: ",
+            f"[{cvt_to_string(UPPER_FORCE_THRESHOLDS_ACCELERATION)}], ",
+            "lower_force_thresholds_nominal: ",
+            f"[{cvt_to_string(LOWER_FORCE_THRESHOLDS_NOMINAL)}], ",
+            "upper_force_thresholds_nominal: ",
+            f"[{cvt_to_string(UPPER_FORCE_THRESHOLDS_NOMINAL)}] ",
+            "}\"",
+        ]],
+        shell=True,
+        name="set_validation_collision_behavior",
+        output="both",
     )
 
     # NOT spawning joint_state_broadcaster here: teleop_single_robot.launch.py's own
@@ -119,6 +162,7 @@ def generate_launch_description():
             ),
         ),
         single_robot,
+        set_collision_behavior,
         pose_broadcaster_spawner,
         variable_impedance_controller_spawner,
     ])
