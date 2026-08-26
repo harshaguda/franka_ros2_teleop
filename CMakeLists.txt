@@ -82,6 +82,7 @@ install(PROGRAMS
   scripts/evaluate_gate1.py
   scripts/probe_variable_impedance_sinusoid.py
   scripts/live_force_band_display.py
+  scripts/run_pilot_rollout.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

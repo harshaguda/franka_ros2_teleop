@@ -565,6 +565,57 @@ ros2 run franka_ros2_teleop live_force_band_display.py --target-manner gently
 - `--target-manner {gently,normally,firmly}` fills in the band currently being collected so the
   operator has one less thing to track visually.
 
+### Pilot rollouts for Gate 3 (proposal §7 Week 3, tasks.md Day 14)
+
+`run_pilot_rollout.py` -- the robot-control-side client for T1 in-distribution pilot rollouts
+("n=5 per policy, sanity only -- not evaluation rollouts, must not be reported"), feeding
+Gate 3 ("B5 >= B0 on the in-distribution pilot; if not, check whether realized K tracks
+commanded K before touching the model"). Deliberately lightweight (json_numpy + requests only
+for the policy call, same split as `bookish-dollop-icra27/scripts/serve_policy.py`'s docstring
+already establishes) -- no torch/lerobot needed on this machine, matching
+`client_example.py`'s design.
+
+```bash
+# on the GPU/checkpoint machine (bookish-dollop-icra27/):
+python scripts/serve_policy.py --checkpoint checkpoints/b5_seed0/b5_seed0_step30000.pt
+# tunnel from the robot-control machine:
+ssh -N -L 8000:localhost:8000 <user>@<gpu-host>
+# on the robot-control machine, teleop already up (crisp_controllers variable-impedance
+# controller active on the follower):
+ros2 run franka_ros2_teleop run_pilot_rollout.py \
+    --policy b5 --n-rollouts 5 --referent red --manner firmly \
+    --rois red:120,80,60,60 blue:300,80,60,60 green:120,260,60,60 black:300,260,60,60
+```
+
+- Reuses this package's already-proven topic conventions rather than inventing new ones:
+  `record_demo.py`'s follower state/pose/wrench subscriptions,
+  `probe_variable_impedance_sinusoid.py`'s `target_pose`/`target_stiffness` publishers
+  (including reusing the subscribed pose's own `frame_id` rather than guessing one), and
+  `franka_lerobot_recorder`'s `cv_bridge`-based camera handling.
+- For B3/B5 checkpoints, rotates the predicted `log_k` (fit in the auto-fit CONTACT frame,
+  see `extract_impedance_labels.py::fit_contact_frame`) into the base-frame diagonal
+  `target_stiffness` via a FROZEN contact-frame rotation
+  (`bookish-dollop-icra27/scripts/fit_frozen_contact_frame.py`, run once per T1 setup freeze
+  against real already-collected data) and
+  `bookish-dollop-icra27/scripts/controller_frame_utils.py` -- see those modules' docstrings
+  for exactly what this approximation preserves and drops (a documented, Day-14-scoped answer
+  to the "Week-4 controller-integration question" `training/labels.py` flags as out of scope
+  for training). For B0/B2 (no compliance output), commands a fixed high stiffness
+  (`extract_impedance_labels.K_MAX`) matching proposal §6.1's literal description of B0.
+- Scores each rollout via `bookish-dollop-icra27/scripts/score_ink_removal.py` (T1's §5 metric:
+  per-mark pixel-difference coverage from the fixed scene camera) against operator-supplied
+  `--rois` -- mark positions are randomized per session (§5), so ROI pixel coordinates must be
+  read off the current frame by hand before running; no click-calibration tool is built yet.
+- Writes one JSON log per rollout (default `/tmp/franka_teleop_pilot_rollouts`, override with
+  `--output-dir` or `TELEOP_PILOT_ROLLOUTS_OUTPUT_DIR`) consumable by
+  `bookish-dollop-icra27/scripts/evaluate_gate3.py`, which makes the actual PASS/FAIL call.
+- **Not yet run against real hardware** -- no ROS2/robot access in the environment that wrote
+  it (this repo's own dev container has no rclpy install either, per the note above). Parses
+  cleanly (`python3 -m py_compile`) and every pure-Python helper it imports
+  (`panda_fk`, `extract_impedance_labels`, `controller_frame_utils`, `score_ink_removal`) was
+  confirmed importable/runnable under its own `sys.path` setup, but the ROS2 wiring itself
+  (topic names, message field access, real-time control-loop behaviour) is unverified.
+
 ## Getting started
 
 To run any quickstart example, you must add the correct IP addresses of you robot to the configuration as described in the following subsections. All other parameters have sensible defaults. If you need to change them, they are datailed in the section [Configuration parameters](#configuration-parameters).
