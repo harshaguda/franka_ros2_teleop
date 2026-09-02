@@ -73,9 +73,11 @@ Run `ros2 run franka_ros2_teleop verify_bilateral_timing.py --help` for all opti
 
 ### Automatic free-space re-zero on every session
 
-`teleop_coordinator` already moves both arms to the fixed
-`start_joint_configuration` (`move_to_start_example_controller`) before activating the real
-teleoperation controllers. It now also uses that same, unskippable startup path to re-zero the
+`teleop_coordinator` already moves both arms to the configured
+`start_joint_configuration` (`move_to_start_example_controller`, defaults to Franka's standard
+"ready" pose -- see `start_joint_configuration` under "Configuration options" below to change it)
+before activating the real teleoperation controllers. It now also uses that same, unskippable
+startup path to re-zero the
 sensorless wrench estimate: once both arms report they've reached the pose, it holds for 1 s to
 let residual motion settle, then samples each arm's
 `franka_robot_state_broadcaster/external_wrench_in_base_frame` for another 1 s. In free space the
@@ -716,6 +718,14 @@ force_feedforward_gains: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] # Follower-side gai
 
 alpha: [3, 3, 3, 3, 1, 1, 1] # Feedback-avoidance damping on the leader, per joint. Prevents the leader from "jumping away" right after the follower makes contact.
 
+start_joint_configuration: [0.0, -0.7853981633974483, 0.0, -2.356194490192345, 0.0, 1.5707963267948966, 0.7853981633974483] # HOME position (radians, 7 joint values): both move_to_start_example_controller and teleop_coordinator's free-space re-zero drive the arm here before teleop starts.
+# Default is Franka's standard "ready" pose. Settable per base/pair/robot like k_gains/d_gains
+# above -- e.g. give the leader and follower different homes with leader: / follower: overrides.
+# Must stay a joint-limit-safe, collision-free posture for your cell; the value is applied
+# as-is with no validation beyond checking there are exactly 7 numbers.
+# NOTE: config/workspace_constraints.yaml's nullspace_posture is a separate hardcoded copy of
+# this same default and does not automatically follow an override here.
+
 pairs:
     - namespace: pair_one # each pair must have the 'namespace' parameter set
       # parameters set in a pair override base parameters
@@ -742,6 +752,13 @@ pairs:
         robot_ip: leader.pair_three.franka.de
       follower:
         robot_ip: follower.pair_three.franka.de
+
+    - namespace: pair_four
+      start_joint_configuration: [0.0, -0.4, 0.0, -2.2, 0.0, 1.8, 0.9] # this pair's task fixture needs a different HOME pose than the default "ready" pose
+      leader:
+        robot_ip: leader.pair_four.franka.de
+      follower:
+        robot_ip: follower.pair_four.franka.de
 ```
 
 ## Tests and Linting

@@ -12,6 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import math
 import os
 import base64
 from typing import Any, Dict, List, Optional
@@ -70,6 +71,16 @@ MAX_FORCE_ACCELERATION_KEY = 'upper_force_thresholds_acceleration'
 MAX_FORCE_NOMINAL_KEY = 'upper_force_thresholds_nominal'
 LOAD_GRIPPER_KEY = 'load_gripper'
 FAKE_HARDWARE_KEY = 'fake_hardware'
+# The joint-space pose move_to_start_example_controller drives each arm to before teleop
+# activates (also the pose teleop_coordinator's free-space re-zero re-uses, see the
+# franka_ros2_teleop README's "Automatic free-space re-zero on every session"). Settable per
+# base/pair/robot exactly like k_gains/d_gains below -- e.g. a pair whose task fixture sits
+# somewhere else on the table can start from a different, still joint-limit-safe, posture.
+# NOTE: config/workspace_constraints.yaml's nullspace_posture is a separate, independently
+# documented copy of whatever this default used to be (Franka's standard "ready" pose) -- it
+# is not read from here, so overriding HOME_POSITION_KEY does not change it; update that file
+# too if the nullspace target should track a new home position.
+HOME_POSITION_KEY = 'start_joint_configuration'
 
 # Where calibrate_payload.py writes <namespace>_payload.yaml (see franka_ros2_teleop README,
 # "Payload calibration"). Same env var / default the calibration script itself uses.
@@ -95,6 +106,11 @@ default_parameters = {
     MAX_FORCE_NOMINAL_KEY: [85.0, 85.0, 85.0, 85.0, 11.0, 11.0],
     LOAD_GRIPPER_KEY: False,
     FAKE_HARDWARE_KEY: False,
+    # Franka's standard "ready" pose -- matches move_to_start_example_controller's own
+    # on_init() default exactly, so leaving this unset changes nothing.
+    HOME_POSITION_KEY: [
+        0.0, -math.pi / 4, 0.0, -3.0 * math.pi / 4, 0.0, math.pi / 2, math.pi / 4,
+    ],
     URDF_KEY: "fr3/fr3.urdf.xacro",
     ARM_ID_KEY: "",
     ARM_PREFIX_KEY: "",
@@ -153,6 +169,12 @@ def create_controller_config(
     # Force coupling gains (feel), independent of the position coupling gains above (tracking).
     force_reflection_gains: List[float] = cvt_to_float_list(config[FORCE_REFLECTION_GAINS_KEY])
     force_feedforward_gains: List[float] = cvt_to_float_list(config[FORCE_FEEDFORWARD_GAINS_KEY])
+    home_position: List[float] = cvt_to_float_list(config[HOME_POSITION_KEY])
+    if len(home_position) != 7:
+        raise ValueError(
+            f"{HOME_POSITION_KEY} must have exactly 7 joint values, got {len(home_position)}: "
+            f"{home_position}"
+        )
 
     config_data = {
         "/**": {
@@ -178,6 +200,14 @@ def create_controller_config(
                     # (tracking) above.
                     "force_input_topic": force_input_topic_name,
                     "force_feedforward_gains": force_feedforward_gains,
+                }
+            },
+            # Applied to this robot's own move_to_start_example_controller instance (spawned
+            # per-namespace in add_robot_launch_config below) via this same generated
+            # --param-file, so leader and follower can each get their own home position.
+            "move_to_start_example_controller": {
+                "ros__parameters": {
+                    "start_joint_configuration": home_position,
                 }
             },
         },
