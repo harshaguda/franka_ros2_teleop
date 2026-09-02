@@ -57,7 +57,7 @@ controller_interface::return_type TeleopFollowerController::update(
   }
 
   updateJointStates();
-  Vector7d q_goal = initial_q_;
+  Vector7d q_goal_target = initial_q_;
 
   const auto input = measured_joint_states_from_leader_buffer_ptr_.readFromRT();
 
@@ -75,9 +75,25 @@ controller_interface::return_type TeleopFollowerController::update(
       return controller_interface::return_type::ERROR;
     }
 
-    Eigen::Map<Eigen::VectorXd>(q_goal.data(), teleop_utils::NUM_JOINTS) =
+    Eigen::Map<Eigen::VectorXd>(q_goal_target.data(), teleop_utils::NUM_JOINTS) =
       Eigen::Map<Eigen::VectorXd>((*input)->position.data(), teleop_utils::NUM_JOINTS);
   }
+
+  // Slew-rate limit the goal so a discontinuity in q_goal_target (e.g. the raw leader
+  // position jumping in the instant this controller reactivates, if the leader moved while
+  // this controller was inactive) is ramped into rather than snapped to -- an unbounded
+  // snap here turns straight into a torque spike below via k_gains_.
+  const double max_step = max_goal_slew_rate_ * period.seconds();
+  for (unsigned int i = 0; i < teleop_utils::NUM_JOINTS; ++i) {
+    double step = q_goal_target(i) - q_goal_smoothed_(i);
+    if (step > max_step) {
+      step = max_step;
+    } else if (step < -max_step) {
+      step = -max_step;
+    }
+    q_goal_smoothed_(i) += step;
+  }
+  const Vector7d & q_goal = q_goal_smoothed_;
 
   // Force channel (leader -> follower): the leader's own sensed external torque
   // (i.e. the force the human operator applies at the leader) is scaled by
@@ -129,6 +145,7 @@ CallbackReturn TeleopFollowerController::on_init()
     auto_declare<std::vector<double>>("d_gains", {});
     auto_declare<std::vector<double>>("force_feedforward_gains", {});
     auto_declare<std::string>("force_input_topic", "");
+    auto_declare<double>("max_goal_slew_rate", 2.0);
   } catch (const std::exception & e) {
     RCLCPP_ERROR(
       this->get_node()->get_logger(), "Exception thrown during init stage with message: %s \n",
@@ -184,6 +201,12 @@ CallbackReturn TeleopFollowerController::on_configure(
     force_feedforward_gains_(i) = force_feedforward_gains.at(i);
   }
   dq_filtered_.setZero();
+
+  max_goal_slew_rate_ = get_node()->get_parameter("max_goal_slew_rate").as_double();
+  if (max_goal_slew_rate_ <= 0.0) {
+    RCLCPP_FATAL(get_node()->get_logger(), "max_goal_slew_rate must be positive");
+    return CallbackReturn::FAILURE;
+  }
 
   auto parameters_client =
     std::make_shared<rclcpp::AsyncParametersClient>(get_node(), "robot_state_publisher");
@@ -261,6 +284,7 @@ CallbackReturn TeleopFollowerController::on_activate(
   updateJointStates();
   dq_filtered_.setZero();
   initial_q_ = q_;
+  q_goal_smoothed_ = q_;
   elapsed_time_ = 0.0;
 
   measured_joint_states_from_leader_buffer_ptr_ =

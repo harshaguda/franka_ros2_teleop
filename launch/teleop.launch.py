@@ -109,7 +109,7 @@ default_parameters = {
     # Franka's standard "ready" pose -- matches move_to_start_example_controller's own
     # on_init() default exactly, so leaving this unset changes nothing.
     HOME_POSITION_KEY: [
-        0.0, -math.pi / 4, 0.0, -3.0 * math.pi / 4, 0.0, math.pi / 2, math.pi / 4,
+        0.0, -math.pi / 4, 0.0, -3.0 * math.pi / 4, 0.0, math.pi / 2, -3 * math.pi / 4,
     ],
     URDF_KEY: "fr3/fr3.urdf.xacro",
     ARM_ID_KEY: "",

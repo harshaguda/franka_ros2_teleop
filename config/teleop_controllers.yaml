@@ -77,6 +77,15 @@
         - 10.0
         - 10.0
         - 5.
+      # Caps how fast the position goal (q_goal, before k_gains/d_gains) can move toward
+      # the leader's raw commanded position, in rad/s. Set above normal hand-guided teleop
+      # speeds so it's a no-op during regular operation; it only engages to smooth out a
+      # large discontinuity in the leader's raw position, e.g. right when this controller
+      # reactivates after the lerobot recorder's post-episode home move (which deliberately
+      # leaves the leader wherever the operator's hand is) -- without it, that reactivation
+      # snaps q_goal straight to the leader's current position and the resulting position
+      # error goes through k_gains_ as a torque spike.
+      max_goal_slew_rate: 2.0
       # Force channel leader -> follower (feel): scales the leader's own sensed
       # external torque (the operator's applied force) before it is fed forward
       # into the follower. Independent of k_gains/d_gains above (position channel,

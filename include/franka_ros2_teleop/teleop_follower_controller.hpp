@@ -60,6 +60,18 @@ private:
   Vector7d dq_filtered_;
   Vector7d k_gains_;
   Vector7d d_gains_;
+  // Slew-rate-limited position goal actually used by update() (see max_goal_slew_rate_
+  // below). Kept separate from the raw leader-commanded position so a large jump in that
+  // raw position -- e.g. right after this controller reactivates while the leader has
+  // drifted away from wherever the follower now is, such as after the lerobot recorder's
+  // post-episode home move, which deliberately leaves the leader alone -- is ramped into
+  // instead of snapped to.
+  Vector7d q_goal_smoothed_;
+  // Max per-joint rate (rad/s) at which q_goal_smoothed_ may move toward the raw target.
+  // Set well above normal hand-guided teleop speeds so it is a no-op during regular
+  // operation, and only engages to smooth out large discontinuities like the reactivation
+  // jump described above.
+  double max_goal_slew_rate_{2.0};
   // Force channel gain: scales the leader's own sensed external torque (i.e. the
   // force the human operator applies at the leader) before it is fed forward into
   // the follower's torque command. Independent from k_gains_/d_gains_ (the position
