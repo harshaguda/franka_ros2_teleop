@@ -53,6 +53,9 @@ def generate_robot_nodes(context):
             "fake_sensor_commands": LaunchConfiguration("fake_sensor_commands").perform(
                 context
             ),
+            "initial_joint_positions": LaunchConfiguration("initial_joint_positions").perform(
+                context
+            ),
         },
     ).toprettyxml(indent="  ")
 
@@ -175,6 +178,18 @@ def generate_launch_description():
             "fake_sensor_commands",
             default_value="false",
             description="Fake sensor commands",
+        ),
+        DeclareLaunchArgument(
+            "initial_joint_positions",
+            default_value=(
+                "0.0 -0.7853981633974483 0.0 -2.356194490192345 0.0 "
+                "1.5707963267948966 0.7853981633974483"
+            ),
+            description=(
+                "Space-separated joint1..7 initial positions (radians) -- only used by "
+                "fake hardware's initial_value state interface; real hardware ignores this. "
+                "Default is Franka's standard 'ready' pose."
+            ),
         ),
         DeclareLaunchArgument(
             "joint_sources",

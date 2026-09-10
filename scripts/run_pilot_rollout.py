@@ -91,9 +91,12 @@ from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Float64MultiArray
 from cv_bridge import CvBridge
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))  # datasets/
-PROJECT_SCRIPTS = os.path.join(REPO_ROOT, "bookish-dollop-icra27", "scripts")
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))  # realpath, not abspath: `ros2 run`
+# executes this file through install/.../lib/franka_ros2_teleop/'s symlink-install symlink,
+# so abspath() (which doesn't follow symlinks) would resolve SCRIPT_DIR to the install tree
+# instead of src/franka_ros2_teleop/scripts, breaking the sibling-package lookup below.
+WORKSPACE_SRC = os.path.dirname(os.path.dirname(SCRIPT_DIR))  # .../src
+PROJECT_SCRIPTS = os.path.join(WORKSPACE_SRC, "bookish-dollop-icra27", "scripts")
 for _p in (SCRIPT_DIR, PROJECT_SCRIPTS):
     if _p not in sys.path:
         sys.path.insert(0, _p)
